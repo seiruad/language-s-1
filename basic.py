@@ -6,25 +6,6 @@
 
 DIGITS = '0123456789'
 
-####################
-# Error
-####################
-
-class Error:
-    def __init__(self, pos_start, pos_end, err_name, details):
-        self.pos_start = pos_start
-        self.pos_end = pos_end
-        self.err_name = err_name
-        self.details = details
-
-    def as_string(self):
-        result = f'{self.err_name}: {self.details}\n'
-        result += f'File {self.pos_start.fn}, line {self.pos_start.ln + 1}'
-        return result
-
-class IllegalCharError(Error):
-    def __init__(self, pos_start, pos_end, details):
-        super().__init__(pos_start, pos_end, 'Illegal Character', details)
 
 ####################
 # Position
@@ -50,6 +31,28 @@ class Position:
 
     def copy(self):
         return Position(self.idx, self.ln, self.col, self.fn, self.ftxt)
+
+
+####################
+# Error
+####################
+
+class Error:
+    def __init__(self, pos_start: Position, pos_end: Position, err_name: str, details):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+        self.err_name = err_name
+        self.details = details
+
+    def as_string(self):
+        result = f'{self.err_name}: {self.details}\n'
+        result += f'File {self.pos_start.fn}, line {self.pos_start.ln + 1}'
+        return result
+
+class IllegalCharError(Error):
+    def __init__(self, pos_start: Position, pos_end: Position, details):
+        super().__init__(pos_start, pos_end, 'Illegal Character', details)
+
 
 
 ####################
@@ -128,7 +131,7 @@ class Lexer:
 
         return tokens, None
 
-    def make_number(self):
+    def make_number(self) -> Token:
         num_str = ''
         dot_count = 0
 
