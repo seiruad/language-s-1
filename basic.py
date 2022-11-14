@@ -53,20 +53,32 @@ class IllegalCharError(Error):
     def __init__(self, pos_start: Position, pos_end: Position, details):
         super().__init__(pos_start, pos_end, 'Illegal Character', details)
 
+class InvalidSyntaxError(Error):
+    def __init__(self, pos_start: Position, pos_end: Position, details=''):
+        super().__init__(pos_start, pos_end, 'Invalid Syntax', details)
+
+class InternalInterpreterException(Exception):
+    def __init__(self, err_name: str, details):
+        self.err_name = err_name
+        self.details = details
+
+    def as_string(self):
+        result = f'[Internal Interpreter Exception] {self.err_name}: {self.details}'
+        return result
 
 
 ####################
 # Tokens
 ####################
 
-TT_INT =    'TT_INT'
-TT_FLOAT =  'TT_FLOAT'
-TT_PLUS =   'TT_PLUS'
-TT_MINUS =  'TT_MINUS'
-TT_MUL =    'TT_MUL'
-TT_DIV =    'TT_DIV'
-TT_LPAREN = 'TT_LPAREN'
-TT_RPAREN = 'TT_RPAREN'
+TT_INT =    'INT'
+TT_FLOAT =  'FLOAT'
+TT_PLUS =   'PLUS'
+TT_MINUS =  'MINUS'
+TT_MUL =    'MUL'
+TT_DIV =    'DIV'
+TT_LPAREN = 'LPAREN'
+TT_RPAREN = 'RPAREN'
 
 class Token:
     def __init__(self, type_, value=None):
@@ -149,15 +161,93 @@ class Lexer:
         if dot_count == 0:
             return Token(TT_INT, int(num_str))
         else:
-            return Token(TT_FLOAT, int(num_str))
+            return Token(TT_FLOAT, float(num_str))
+
+####################
+# Run
+####################
+
+class NumberNode:
+    def __init__(self, tok: Token):
+        self.tok = tok
+
+    def __repr__(self):
+        return f'{self.tok}'
+
+class BinOpNode:
+    def __init__(self, left_node, op_tok: Token, right_node):
+        self.left_node = left_node
+        self.op_tok = op_tok
+        self.right_node = right_node
+
+    def __repr__(self):
+        return f'({self.left_node}, {self.op_tok}, {self.right_node})'
+
+####################
+# Parser
+####################
+
+class Parser:
+    def __init__(self, tokens: list[Token]) -> None:
+        self.tokens = tokens
+        self.tok_idx = -1
+        self.advance()
+
+    def advance(self) -> Token:
+        self.tok_idx += 1
+        if self.tok_idx < len(self.tokens):
+            self.current_tok = self.tokens[self.tok_idx]
+        elif not hasattr(self, 'current_tok'):
+            raise InternalInterpreterException(f'Current token is none in Parser', f'self.current_tok must exist but it is not')
+        return self.current_tok
+
+    def parse(self):
+        res = self.expr()
+        return res
+
+    def factor(self):
+        tok = self.current_tok
+        if tok.type in (TT_INT, TT_FLOAT):
+            self.advance()
+            return NumberNode(tok)
+
+        # raise InternalInterpreterException(f'Factor is not correct', f'self.current_tok[{self.current_tok}] needs to be in (TT_INT, TT_FLOAT) but its not')
+        
+
+    def term(self):
+        return self.bin_op(self.factor, (TT_MUL, TT_DIV))
+
+    def expr(self):
+        return self.bin_op(self.term, (TT_PLUS, TT_MINUS))
+
+
+    def bin_op(self, func, ops):
+        left = func()
+
+        while self.current_tok.type in ops:
+            op_tok = self.current_tok
+            self.advance()
+            right = func()
+            left = BinOpNode(left, op_tok, right)
+
+        return left        
+
+
 
 ####################
 # Run
 ####################
 
 def run(fn, text):
+    # Generate tokens
     lexer = Lexer(fn, text)
     tokens, err = lexer.make_tokens()
+    if err:
+        return None, err
 
-    return tokens, err
+    # Generate AST
+    parser = Parser(tokens)
+    ast = parser.parse()
+
+    return ast, None
 
