@@ -24,3 +24,4 @@ def string_with_arrows(text, pos_start, pos_end):
         if idx_end < 0: idx_end = len(text)
 
     return result.replace('\t', '')
+    

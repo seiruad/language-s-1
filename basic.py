@@ -174,7 +174,7 @@ class Lexer:
             return Token(TT_FLOAT, float(num_str), pos_start, self.pos)
 
 ####################
-# Run
+# Nodes
 ####################
 
 class NumberNode:
@@ -192,6 +192,14 @@ class BinOpNode:
 
     def __repr__(self):
         return f'({self.left_node}, {self.op_tok}, {self.right_node})'
+
+class UnaryOpNode:
+    def __init__(self, op_tok: Token, node) -> None:
+        self.op_tok = op_tok
+        self.node = node
+
+    def __repr__(self) -> str:
+        return f'({self.op_tok}, {self.node})'
 
 ####################
 # Parse results
@@ -234,7 +242,7 @@ class Parser:
     def advance(self) -> Token:
         self.tok_idx += 1
         if self.tok_idx < len(self.tokens):
-            self.current_tok = self.tokens[self.tok_idx]
+            self.current_tok: Token = self.tokens[self.tok_idx]
         elif not hasattr(self, 'current_tok'):
             raise InternalInterpreterException(f'Current token is none in Parser', f'self.current_tok must exist but it is not')
         return self.current_tok
@@ -253,18 +261,36 @@ class Parser:
     def factor(self):
         res = ParseResult()
         tok = self.current_tok
-        if tok.type in (TT_INT, TT_FLOAT):
+
+        if tok.type in (TT_PLUS, TT_MINUS):
+            res.register(self.advance())
+            factor = res.register(self.factor())
+            if res.err: return res
+            return res.success(UnaryOpNode(tok, factor)) 
+
+        elif tok.type in (TT_INT, TT_FLOAT):
             res.register(self.advance())
             return res.success(NumberNode(tok))
+
+        elif tok.type == TT_LPAREN:
+            res.register(self.advance())
+            expr = res.register(self.expr())
+            if res.err: return res
+            if self.current_tok.type == TT_RPAREN:
+                res.register(self.advance())
+                return res.success(expr)
+            else:
+                return res.failure(
+                    InvalidSyntaxError(
+                        self.current_tok.pos_start, self.current_tok.pos_end, "Expected ')'"
+                    )
+                )
 
         return res.failure(
             InvalidSyntaxError(
                 tok.pos_start, tok.pos_end, 'Expected INT or FLOAT'
             )
         )
-
-        # raise InternalInterpreterException(f'Factor is not correct', f'self.current_tok[{self.current_tok}] needs to be in (TT_INT, TT_FLOAT) but its not')
-        
 
     def term(self):
         return self.bin_op(self.factor, (TT_MUL, TT_DIV))
@@ -287,6 +313,76 @@ class Parser:
 
         return res.success(left)
 
+####################
+# Values
+####################
+
+class Number:
+    def __init__(self, value) -> None:
+        self.value = value
+
+    def set_pos(self, pos_start: Position | None=None, pos_end: Position | None=None):
+        self.pos_start = pos_start
+        self.pos_end = pos_end
+
+    def added_to(self, other):
+        if isinstance(other, Number):
+            return Number(self.value + other.value)  
+
+    def sub_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value - other.value) 
+
+    def mul_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value * other.value) 
+    
+    def div_by(self, other):
+        if isinstance(other, Number):
+            return Number(self.value / other.value)
+
+    def __repr__(self) -> str:
+        return str(self.value)
+
+
+####################
+# Interpreter
+####################
+
+class Interpreter:
+    def visit(self, node):
+        method_name = f'visit_{type(node).__name__}'
+        method = getattr(self, method_name, self.no_visit_method)
+        return method(node)
+
+    def no_visit_method(self, node):
+        raise Exception(f'No visit_{type(node).__name__} method defined')
+
+    def visit_NumberNode(self, node):
+        # print("visited Number Node")
+        return Number(node.tok.value).set_pos(node.pos_start, node.pos_end)
+        
+    def visit_BinOpNode(self, node):
+        # print("visited BinOp Node")
+        left: Number = self.visit(node.left_node)
+        right = self.visit(node.right_node)
+
+        result = None
+
+        if node.op_tok.type == TT_PLUS:
+            result = left.added_to(right)
+        elif node.op_tok.type == TT_MINUS:
+            result = left.sub_by(right)
+        elif node.op_tok.type == TT_MUL:
+            result = left.mul_by(right)         
+        elif node.op_tok.type == TT_DIV:
+            result = left.div_by(right)   
+
+        return result                  
+    
+    def visit_UnaryOpNode(self, node):
+        print("visited UnaryOp Node")
+        self.visit(node.node)
 
 
 ####################
@@ -303,5 +399,11 @@ def run(fn, text):
     # Generate AST
     parser = Parser(tokens)
     ast = parser.parse()
+    if ast.err: return None, ast.err
 
-    return ast.node, ast.err
+    # Run program 
+    interpreter = Interpreter()
+    interpreter.visit(ast.node)
+
+    # return ast.node, ast.err
+    return None, None
